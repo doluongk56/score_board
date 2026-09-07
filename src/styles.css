@@ -91,6 +91,11 @@ main { flex: 1; }
 .stack-form label { display: grid; gap: 7px; color: #cbd6e3; font-size: 12px; font-weight: 700; }
 input { width: 100%; height: 46px; padding: 0 13px; border: 1px solid var(--line); border-radius: 10px; background: #091522; color: #f5f7fa; }
 input::placeholder { color: #61728a; }
+.password-field { position: relative; display: block; }
+.password-field input { padding-right: 48px; }
+.password-toggle { position: absolute; top: 4px; right: 4px; width: 38px; height: 38px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; }
+.password-toggle:hover { background: var(--surface-2); color: #fff; }
+.password-toggle svg { width: 17px; }
 .form-row { display: grid; grid-template-columns: 1.5fr 1fr; gap: 12px; }
 fieldset { margin: 0; border: 0; padding: 0; }
 legend { width: 100%; display: flex; justify-content: space-between; margin-bottom: 10px; color: #cbd6e3; font-size: 12px; font-weight: 700; }

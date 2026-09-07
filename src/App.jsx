@@ -6,6 +6,8 @@ import {
   ChevronRight,
   CircleUserRound,
   Edit3,
+  Eye,
+  EyeOff,
   Gamepad2,
   LogIn,
   LogOut,
@@ -121,6 +123,7 @@ function SetupRequired() {
 function LoginModal({ onClose, notify }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const submit = async (event) => {
@@ -137,7 +140,15 @@ function LoginModal({ onClose, notify }) {
     <Modal onClose={onClose} title="Đăng nhập quản trị">
       <form onSubmit={submit} className="stack-form">
         <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" /></label>
-        <label>Mật khẩu<input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" /></label>
+        <label>
+          Mật khẩu
+          <span className="password-field">
+            <input type={showPassword ? 'text' : 'password'} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+            <button type="button" className="password-toggle" aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} onClick={() => setShowPassword((value) => !value)}>
+              {showPassword ? <EyeOff /> : <Eye />}
+            </button>
+          </span>
+        </label>
         <button className="primary full" disabled={busy}>{busy ? <RefreshCw className="spin" /> : <LogIn />} Đăng nhập</button>
       </form>
     </Modal>
