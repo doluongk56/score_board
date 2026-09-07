@@ -436,6 +436,13 @@ function GameEditor({ tourId, players, game, onClose, onSaved, notify }) {
     if (!/^-?\d*$/.test(raw)) return
     setScores((current) => current.map((item) => item.player_id === id ? { ...item, score: raw } : item))
   }
+  const toggleSign = (id) => {
+    setScores((current) => current.map((item) => {
+      if (item.player_id !== id) return item
+      const score = String(item.score)
+      return { ...item, score: score.startsWith('-') ? score.slice(1) : `-${score}` }
+    }))
+  }
   const balanceLast = () => {
     if (scores.length < 2) return
     const rest = scores.slice(0, -1).reduce((sum, item) => sum + Number(item.score || 0), 0)
@@ -459,7 +466,7 @@ function GameEditor({ tourId, players, game, onClose, onSaved, notify }) {
     <Modal title={game ? `Sửa điểm Game ${game.game_number}` : 'Nhập điểm game mới'} onClose={onClose} wide>
       <form className="stack-form" onSubmit={submit}>
         <div className="score-inputs">{scores.map((item, index) => (
-          <label key={item.player_id}><span><span className="avatar small">{item.name.charAt(0).toUpperCase()}</span>{item.name}{index === scores.length - 1 && <small> · người cân điểm</small>}</span><input type="text" inputMode="numeric" pattern="-?[0-9]*" required value={item.score} onFocus={(e) => e.target.select()} onChange={(e) => update(item.player_id, e.target.value)} /></label>
+          <label key={item.player_id}><span><span className="avatar small">{item.name.charAt(0).toUpperCase()}</span>{item.name}{index === scores.length - 1 && <small> · người cân điểm</small>}</span><span className="score-field"><button type="button" className="sign-button" aria-label={`Đổi dấu điểm của ${item.name}`} onClick={() => toggleSign(item.player_id)}>+/-</button><input type="text" inputMode="numeric" pattern="-?[0-9]*" required value={item.score} onFocus={(e) => e.target.select()} onChange={(e) => update(item.player_id, e.target.value)} /></span></label>
         ))}</div>
         <div className={`score-total ${total === 0 ? 'valid' : 'invalid'}`}><span>Tổng điểm</span><strong>{total > 0 ? `+${total}` : total}</strong><span>{total === 0 ? <><Check /> Hợp lệ</> : 'Cần bằng 0'}</span></div>
         <button type="button" className="ghost full" onClick={balanceLast}><RefreshCw /> Tự cân điểm người cuối</button>

@@ -6,6 +6,10 @@ test('tổng điểm được tính đúng', () => {
   assert.equal(scoreTotal([{ score: 10 }, { score: -4 }, { score: -6 }]), 0)
 })
 
+test('tổng điểm bỏ qua dấu âm đang nhập dở', () => {
+  assert.equal(scoreTotal([{ score: '-' }, { score: 4 }]), 4)
+})
+
 test('từ chối game có tổng khác 0', () => {
   assert.equal(validateScores([{ score: 10 }, { score: -4 }]), 'Tổng điểm của game phải bằng 0.')
 })

@@ -1,5 +1,8 @@
 export function scoreTotal(scores) {
-  return scores.reduce((total, item) => total + Number(item.score || 0), 0)
+  return scores.reduce((total, item) => {
+    const score = Number(item.score || 0)
+    return total + (Number.isFinite(score) ? score : 0)
+  }, 0)
 }
 
 export function validateScores(scores) {
