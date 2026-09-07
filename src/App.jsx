@@ -367,7 +367,7 @@ function TourPage({ tourId, admin, navigate, notify }) {
           <div className="panel-title"><div><p className="eyebrow">Tổng kết</p><h2>Bảng xếp hạng</h2></div><Medal /></div>
           <div className="standings">{standings.map((player, index) => (
             <div className={`standing-row rank-${index + 1}`} key={player.id}>
-              <span className="rank">{index + 1}</span><span className="avatar">{player.name.charAt(0).toUpperCase()}</span><strong>{player.name}</strong><Score value={player.total} />
+              <RankBadge rank={index + 1} /><span className="avatar">{player.name.charAt(0).toUpperCase()}</span><strong>{player.name}</strong><Score value={player.total} />
             </div>
           ))}</div>
         </article>
@@ -393,6 +393,13 @@ function TourPage({ tourId, admin, navigate, notify }) {
       {renameOpen && <RenameTourModal tour={tour} onClose={() => setRenameOpen(false)} onSaved={load} notify={notify} />}
     </section>
   )
+}
+
+function RankBadge({ rank }) {
+  if (rank <= 3) {
+    return <span className={`rank medal-rank medal-${rank}`} aria-label={`Hạng ${rank}`}><Medal /></span>
+  }
+  return <span className="rank">{rank}</span>
 }
 
 function RenameTourModal({ tour, onClose, onSaved, notify }) {

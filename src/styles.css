@@ -136,6 +136,11 @@ legend span { color: var(--brand); }
 .standing-row.rank-1 { background: linear-gradient(90deg, rgba(255,200,87,.08), transparent); }
 .standing-row.rank-1 .rank { color: var(--gold); }
 .rank { color: var(--muted); font-size: 12px; font-weight: 800; text-align: center; }
+.medal-rank { display: grid; place-items: center; }
+.medal-rank svg { width: 20px; height: 20px; stroke-width: 2.4; }
+.medal-1 { color: var(--gold); }
+.medal-2 { color: #c8d3e1; }
+.medal-3 { color: #d9975d; }
 .score { font-variant-numeric: tabular-nums; font-size: 14px; }
 .score.positive { color: var(--brand); }
 .score.negative { color: var(--danger); }
