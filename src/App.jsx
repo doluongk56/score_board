@@ -426,17 +426,20 @@ function GameEditor({ tourId, players, game, onClose, onSaved, notify }) {
   const initial = players.map((player) => ({
     player_id: player.id,
     name: player.name,
-    score: game?.game_scores?.find((item) => item.player_id === player.id)?.score ?? 0,
+    score: String(game?.game_scores?.find((item) => item.player_id === player.id)?.score ?? 0),
   }))
   const [scores, setScores] = useState(initial)
   const [busy, setBusy] = useState(false)
   const total = scoreTotal(scores)
 
-  const update = (id, raw) => setScores((current) => current.map((item) => item.player_id === id ? { ...item, score: raw === '' ? '' : Number(raw) } : item))
+  const update = (id, raw) => {
+    if (!/^-?\d*$/.test(raw)) return
+    setScores((current) => current.map((item) => item.player_id === id ? { ...item, score: raw } : item))
+  }
   const balanceLast = () => {
     if (scores.length < 2) return
     const rest = scores.slice(0, -1).reduce((sum, item) => sum + Number(item.score || 0), 0)
-    setScores((current) => current.map((item, index) => index === current.length - 1 ? { ...item, score: -rest } : item))
+    setScores((current) => current.map((item, index) => index === current.length - 1 ? { ...item, score: String(-rest) } : item))
   }
   const submit = async (event) => {
     event.preventDefault()
@@ -456,7 +459,7 @@ function GameEditor({ tourId, players, game, onClose, onSaved, notify }) {
     <Modal title={game ? `Sửa điểm Game ${game.game_number}` : 'Nhập điểm game mới'} onClose={onClose} wide>
       <form className="stack-form" onSubmit={submit}>
         <div className="score-inputs">{scores.map((item, index) => (
-          <label key={item.player_id}><span><span className="avatar small">{item.name.charAt(0).toUpperCase()}</span>{item.name}{index === scores.length - 1 && <small> · người cân điểm</small>}</span><input type="number" step="1" required value={item.score} onFocus={(e) => e.target.select()} onChange={(e) => update(item.player_id, e.target.value)} /></label>
+          <label key={item.player_id}><span><span className="avatar small">{item.name.charAt(0).toUpperCase()}</span>{item.name}{index === scores.length - 1 && <small> · người cân điểm</small>}</span><input type="text" inputMode="numeric" pattern="-?[0-9]*" required value={item.score} onFocus={(e) => e.target.select()} onChange={(e) => update(item.player_id, e.target.value)} /></label>
         ))}</div>
         <div className={`score-total ${total === 0 ? 'valid' : 'invalid'}`}><span>Tổng điểm</span><strong>{total > 0 ? `+${total}` : total}</strong><span>{total === 0 ? <><Check /> Hợp lệ</> : 'Cần bằng 0'}</span></div>
         <button type="button" className="ghost full" onClick={balanceLast}><RefreshCw /> Tự cân điểm người cuối</button>
