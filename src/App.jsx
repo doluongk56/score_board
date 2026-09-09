@@ -25,7 +25,14 @@ import {
   X,
 } from 'lucide-react'
 import { isConfigured, supabase } from './lib/supabase.js'
-import { calculateStandings, scoreTotal, validateScores } from './lib/scoring.js'
+import {
+  DEFAULT_GAME_KEY,
+  GAME_RULE_LIST,
+  calculateStandings,
+  getGameRule,
+  scoreTotal,
+  validateScores,
+} from './lib/scoring.js'
 
 const formatDate = (date) => new Intl.DateTimeFormat('vi-VN', {
   day: '2-digit', month: '2-digit', year: 'numeric',
@@ -33,9 +40,17 @@ const formatDate = (date) => new Intl.DateTimeFormat('vi-VN', {
 
 const today = () => new Date().toISOString().slice(0, 10)
 
+const missingGameKeyColumn = (error) => (
+  error && (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    /game_key/i.test(error.message || '')
+  )
+)
+
 function App() {
   const [session, setSession] = useState(null)
-  const [page, setPage] = useState({ name: 'tours' })
+  const [page, setPage] = useState({ name: 'games' })
   const [loginOpen, setLoginOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [notice, setNotice] = useState(null)
@@ -65,13 +80,13 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <button className="brand" onClick={() => navigate({ name: 'tours' })}>
+        <button className="brand" onClick={() => navigate({ name: 'games' })}>
           <span className="brand-mark"><Gamepad2 size={22} /></span>
           <span><strong>Game Score</strong><small>Chơi vui, tính chuẩn</small></span>
         </button>
         <nav className={menuOpen ? 'nav-links open' : 'nav-links'}>
-          <button className={page.name === 'tours' ? 'active' : ''} onClick={() => navigate({ name: 'tours' })}>
-            <Trophy size={18} /> Các tour
+          <button className={['games', 'tours', 'tour'].includes(page.name) ? 'active' : ''} onClick={() => navigate({ name: 'games' })}>
+            <Gamepad2 size={18} /> Trò chơi
           </button>
           <button className={page.name === 'players' ? 'active' : ''} onClick={() => navigate({ name: 'players' })}>
             <Users size={18} /> Người chơi
@@ -91,7 +106,8 @@ function App() {
       </header>
 
       <main>
-        {page.name === 'tours' && <ToursPage admin={Boolean(session)} navigate={navigate} notify={notify} />}
+        {page.name === 'games' && <GamesPage navigate={navigate} notify={notify} />}
+        {page.name === 'tours' && <ToursPage gameKey={page.gameKey} admin={Boolean(session)} navigate={navigate} notify={notify} />}
         {page.name === 'players' && <PlayersPage admin={Boolean(session)} notify={notify} onLogin={() => setLoginOpen(true)} />}
         {page.name === 'tour' && (
           <TourPage tourId={page.id} admin={Boolean(session)} navigate={navigate} notify={notify} />
@@ -102,6 +118,55 @@ function App() {
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} notify={notify} />}
       {notice && <div className={`toast ${notice.type}`}>{notice.type === 'success' ? <Check /> : <X />}{notice.message}</div>}
     </div>
+  )
+}
+
+function GamesPage({ navigate, notify }) {
+  const [tourCounts, setTourCounts] = useState(() => new Map())
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await supabase.from('tours').select('game_key')
+    let rows = data || []
+    if (missingGameKeyColumn(error)) {
+      const fallback = await supabase.from('tours').select('id')
+      if (fallback.error) notify(fallback.error.message, 'error')
+      rows = (fallback.data || []).map(() => ({ game_key: DEFAULT_GAME_KEY }))
+    } else if (error) notify(error.message, 'error')
+    const counts = new Map(GAME_RULE_LIST.map((rule) => [rule.key, 0]))
+    for (const tour of rows) {
+      const key = tour.game_key || DEFAULT_GAME_KEY
+      counts.set(key, (counts.get(key) || 0) + 1)
+    }
+    setTourCounts(counts)
+    setLoading(false)
+  }, [notify])
+
+  useEffect(() => { load() }, [load])
+
+  return (
+    <section className="page-container">
+      <div className="page-heading">
+        <div><p className="eyebrow">Chọn game</p><h1>Bảng điểm theo game</h1><p>Chọn một game để xem các tour và nhập điểm.</p></div>
+      </div>
+
+      {loading ? <Loading /> : (
+        <div className="game-kind-list">
+          {GAME_RULE_LIST.map((rule) => (
+            <button className="game-kind-row game-kind-button" key={rule.key} onClick={() => navigate({ name: 'tours', gameKey: rule.key })}>
+              <span className="game-kind-icon"><Gamepad2 /></span>
+              <div>
+                <strong>{rule.name}</strong>
+                <small>{rule.description}</small>
+              </div>
+              <span className="game-kind-count">{tourCounts.get(rule.key) || 0} tour</span>
+              <ChevronRight />
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -155,7 +220,8 @@ function LoginModal({ onClose, notify }) {
   )
 }
 
-function ToursPage({ admin, navigate, notify }) {
+function ToursPage({ gameKey = DEFAULT_GAME_KEY, admin, navigate, notify }) {
+  const rule = getGameRule(gameKey)
   const [tours, setTours] = useState([])
   const [players, setPlayers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -163,22 +229,28 @@ function ToursPage({ admin, navigate, notify }) {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: tourRows, error }, { data: playerRows }] = await Promise.all([
-      supabase.from('tours').select('*, tour_players(count), games(count)').order('played_on', { ascending: false }).order('created_at', { ascending: false }),
+    const [{ data: selectedTourRows, error }, { data: playerRows }] = await Promise.all([
+      supabase.from('tours').select('*, tour_players(count), games(count)').eq('game_key', gameKey).order('played_on', { ascending: false }).order('created_at', { ascending: false }),
       supabase.from('players').select('*').eq('is_active', true).order('name'),
     ])
-    if (error) notify(error.message, 'error')
+    let tourRows = selectedTourRows || []
+    if (missingGameKeyColumn(error) && gameKey === DEFAULT_GAME_KEY) {
+      const fallback = await supabase.from('tours').select('*, tour_players(count), games(count)').order('played_on', { ascending: false }).order('created_at', { ascending: false })
+      if (fallback.error) notify(fallback.error.message, 'error')
+      tourRows = fallback.data || []
+    } else if (error) notify(error.message, 'error')
     setTours(tourRows || [])
     setPlayers(playerRows || [])
     setLoading(false)
-  }, [notify])
+  }, [gameKey, notify])
 
   useEffect(() => { load() }, [load])
 
   return (
     <section className="page-container">
+      <button className="back-button" onClick={() => navigate({ name: 'games' })}><ArrowLeft /> Tất cả game</button>
       <div className="page-heading">
-        <div><p className="eyebrow">Lịch sử thi đấu</p><h1>Các tour chơi game</h1><p>Mở một tour để xem bảng xếp hạng và điểm từng game.</p></div>
+        <div><p className="eyebrow">Lịch sử thi đấu</p><h1>{rule.name}</h1><p>Mở một tour để xem bảng xếp hạng và điểm từng {rule.roundName}.</p></div>
         {admin && <button className="primary" onClick={() => setCreateOpen(true)}><Plus /> Tạo tour</button>}
       </div>
 
@@ -189,20 +261,22 @@ function ToursPage({ admin, navigate, notify }) {
           {tours.map((tour) => (
             <button className="tour-card" key={tour.id} onClick={() => navigate({ name: 'tour', id: tour.id })}>
               <div className="tour-card-top"><span className="tour-icon"><Trophy /></span><ChevronRight /></div>
+              <span className="game-kind-chip"><Gamepad2 /> {rule.name}</span>
               <h2>{tour.name}</h2>
               <p><CalendarDays /> {formatDate(tour.played_on)}</p>
-              <div className="tour-meta"><span><Users /> {tour.tour_players?.[0]?.count || 0} người</span><span><Gamepad2 /> {tour.games?.[0]?.count || 0} game</span></div>
+              <div className="tour-meta"><span><Users /> {tour.tour_players?.[0]?.count || 0} người</span><span><Gamepad2 /> {tour.games?.[0]?.count || 0} {rule.roundName}</span></div>
             </button>
           ))}
         </div>
       )}
       {!admin && <ReadOnlyHint />}
-      {createOpen && <CreateTourModal players={players} onClose={() => setCreateOpen(false)} onCreated={load} notify={notify} />}
+      {createOpen && <CreateTourModal gameKey={gameKey} players={players} onClose={() => setCreateOpen(false)} onCreated={load} notify={notify} />}
     </section>
   )
 }
 
-function CreateTourModal({ players, onClose, onCreated, notify }) {
+function CreateTourModal({ gameKey, players, onClose, onCreated, notify }) {
+  const rule = getGameRule(gameKey)
   const [name, setName] = useState(`Tour ${formatDate(today())}`)
   const [date, setDate] = useState(today())
   const [selected, setSelected] = useState(() => players.map((p) => p.id))
@@ -214,7 +288,12 @@ function CreateTourModal({ players, onClose, onCreated, notify }) {
     event.preventDefault()
     if (selected.length < 2) return notify('Hãy chọn ít nhất 2 người chơi.', 'error')
     setBusy(true)
-    const { data: tour, error } = await supabase.from('tours').insert({ name: name.trim(), played_on: date }).select().single()
+    let { data: tour, error } = await supabase.from('tours').insert({ name: name.trim(), played_on: date, game_key: gameKey }).select().single()
+    if (missingGameKeyColumn(error) && gameKey === DEFAULT_GAME_KEY) {
+      const fallback = await supabase.from('tours').insert({ name: name.trim(), played_on: date }).select().single()
+      tour = fallback.data
+      error = fallback.error
+    }
     if (error) { setBusy(false); return notify(error.message, 'error') }
     const { error: memberError } = await supabase.from('tour_players').insert(selected.map((player_id) => ({ tour_id: tour.id, player_id })))
     if (memberError) {
@@ -229,7 +308,7 @@ function CreateTourModal({ players, onClose, onCreated, notify }) {
   }
 
   return (
-    <Modal title="Tạo tour mới" onClose={onClose} wide>
+    <Modal title={`Tạo tour ${rule.name}`} onClose={onClose} wide>
       <form onSubmit={submit} className="stack-form">
         <div className="form-row">
           <label>Tên tour<input required maxLength="100" value={name} onChange={(e) => setName(e.target.value)} /></label>
@@ -337,13 +416,14 @@ function TourPage({ tourId, admin, navigate, notify }) {
   }, [tourId, notify])
   useEffect(() => { load() }, [load])
 
-  const standings = useMemo(() => calculateStandings(players, games), [players, games])
+  const rule = getGameRule(tour?.game_key)
+  const standings = useMemo(() => calculateStandings(players, games, tour?.game_key), [players, games, tour?.game_key])
 
   const removeGame = async (game) => {
-    if (!window.confirm(`Xoá Game ${game.game_number}?`)) return
+    if (!window.confirm(`Xoá ${rule.roundName} ${game.game_number}?`)) return
     const { error } = await supabase.rpc('delete_game', { p_game_id: game.id })
     if (error) return notify(error.message, 'error')
-    notify('Đã xoá game.')
+    notify(`Đã xoá ${rule.roundName}.`)
     load()
   }
 
@@ -352,7 +432,7 @@ function TourPage({ tourId, admin, navigate, notify }) {
     const { error } = await supabase.from('tours').delete().eq('id', tour.id)
     if (error) return notify(error.message, 'error')
     notify('Đã xoá tour.')
-    navigate({ name: 'tours' })
+    navigate({ name: 'tours', gameKey: tour.game_key || DEFAULT_GAME_KEY })
   }
 
   if (loading) return <section className="page-container"><Loading /></section>
@@ -360,7 +440,7 @@ function TourPage({ tourId, admin, navigate, notify }) {
 
   return (
     <section className="page-container">
-      <button className="back-button" onClick={() => navigate({ name: 'tours' })}><ArrowLeft /> Tất cả tour</button>
+      <button className="back-button" onClick={() => navigate({ name: 'tours', gameKey: tour.game_key || DEFAULT_GAME_KEY })}><ArrowLeft /> Tất cả tour {rule.name}</button>
       <div className="tour-hero">
         <div>
           <p className="eyebrow"><CalendarDays /> {formatDate(tour.played_on)}</p>
@@ -368,14 +448,14 @@ function TourPage({ tourId, admin, navigate, notify }) {
             <h1>{tour.name}</h1>
             {admin && <button className="icon-button" aria-label="Đổi tên tour" onClick={() => setRenameOpen(true)}><Edit3 /></button>}
           </div>
-          <p>{players.length} người chơi · {games.length} game đã hoàn thành</p>
+          <p>{rule.name} · {players.length} người chơi · {games.length} {rule.roundName} đã hoàn thành</p>
         </div>
-        {admin && <div className="hero-actions"><button className="primary" onClick={() => setEditor({ mode: 'new' })}><Plus /> Thêm game</button><button className="icon-danger" aria-label="Xoá tour" onClick={removeTour}><Trash2 /></button></div>}
+        {admin && <div className="hero-actions"><button className="primary" onClick={() => setEditor({ mode: 'new' })}><Plus /> Thêm {rule.roundName}</button><button className="icon-danger" aria-label="Xoá tour" onClick={removeTour}><Trash2 /></button></div>}
       </div>
 
       <div className="detail-grid">
         <article className="panel standings-panel">
-          <div className="panel-title"><div><p className="eyebrow">Tổng kết</p><h2>Bảng xếp hạng</h2></div><Medal /></div>
+          <div className="panel-title"><div><p className="eyebrow">Tổng kết</p><h2>Bảng xếp hạng {rule.name}</h2></div><Medal /></div>
           <div className="standings">{standings.map((player, index) => (
             <div className={`standing-row rank-${index + 1}`} key={player.id}>
               <RankBadge rank={index + 1} /><span className="avatar">{player.name.charAt(0).toUpperCase()}</span><strong>{player.name}</strong><Score value={player.total} />
@@ -384,11 +464,11 @@ function TourPage({ tourId, admin, navigate, notify }) {
         </article>
 
         <article className="panel games-panel">
-          <div className="panel-title"><div><p className="eyebrow">Chi tiết</p><h2>Kết quả từng game</h2></div><Gamepad2 /></div>
-          {games.length === 0 ? <Empty icon={<Gamepad2 />} title="Chưa có game" text={admin ? 'Nhấn “Thêm game” để nhập kết quả.' : 'Chưa có kết quả được nhập.'} compact /> : (
+          <div className="panel-title"><div><p className="eyebrow">Chi tiết</p><h2>Kết quả từng {rule.roundName}</h2></div><Gamepad2 /></div>
+          {games.length === 0 ? <Empty icon={<Gamepad2 />} title={`Chưa có ${rule.roundName}`} text={admin ? `Nhấn “Thêm ${rule.roundName}” để nhập kết quả.` : 'Chưa có kết quả được nhập.'} compact /> : (
             <div className="game-list">{games.map((game) => (
               <div className="game-row" key={game.id}>
-                <div className="game-number">G{game.game_number}</div>
+                <div className="game-number">V{game.game_number}</div>
                 <div className="game-scores">{players.map((player) => {
                   const value = game.game_scores?.find((s) => s.player_id === player.id)?.score ?? 0
                   return <span key={player.id}><small>{player.name}</small><Score value={value} /></span>
@@ -400,7 +480,7 @@ function TourPage({ tourId, admin, navigate, notify }) {
         </article>
       </div>
       {!admin && <ReadOnlyHint />}
-      {editor && <GameEditor tourId={tour.id} players={players} game={editor.game} onClose={() => setEditor(null)} onSaved={load} notify={notify} />}
+      {editor && <GameEditor tourId={tour.id} gameKey={tour.game_key} players={players} game={editor.game} onClose={() => setEditor(null)} onSaved={load} notify={notify} />}
       {renameOpen && <RenameTourModal tour={tour} onClose={() => setRenameOpen(false)} onSaved={load} notify={notify} />}
     </section>
   )
@@ -440,7 +520,8 @@ function RenameTourModal({ tour, onClose, onSaved, notify }) {
   )
 }
 
-function GameEditor({ tourId, players, game, onClose, onSaved, notify }) {
+function GameEditor({ tourId, gameKey, players, game, onClose, onSaved, notify }) {
+  const rule = getGameRule(gameKey)
   const initial = players.map((player) => ({
     player_id: player.id,
     name: player.name,
@@ -449,6 +530,7 @@ function GameEditor({ tourId, players, game, onClose, onSaved, notify }) {
   const [scores, setScores] = useState(initial)
   const [busy, setBusy] = useState(false)
   const total = scoreTotal(scores)
+  const totalIsValid = !rule.zeroSum || total === 0
 
   const update = (id, raw) => {
     if (!/^-?\d*$/.test(raw)) return
@@ -469,26 +551,27 @@ function GameEditor({ tourId, players, game, onClose, onSaved, notify }) {
   const submit = async (event) => {
     event.preventDefault()
     const payload = scores.map(({ player_id, score }) => ({ player_id, score: Number(score) }))
-    const message = validateScores(payload)
+    const message = validateScores(payload, gameKey)
     if (message) return notify(message, 'error')
     setBusy(true)
     const { error } = await supabase.rpc('save_game', { p_tour_id: tourId, p_scores: payload, p_game_id: game?.id || null })
     setBusy(false)
     if (error) return notify(error.message, 'error')
-    notify(game ? 'Đã cập nhật điểm.' : 'Đã lưu game mới.')
+    notify(game ? 'Đã cập nhật điểm.' : `Đã lưu ${rule.roundName} mới.`)
     await onSaved()
     onClose()
   }
 
   return (
-    <Modal title={game ? `Sửa điểm Game ${game.game_number}` : 'Nhập điểm game mới'} onClose={onClose} wide>
+    <Modal title={game ? `Sửa điểm ${rule.roundName} ${game.game_number}` : `Nhập điểm ${rule.roundName} mới`} onClose={onClose} wide>
       <form className="stack-form" onSubmit={submit}>
+        <p className="form-note"><strong>{rule.name}</strong><span>{rule.scoreLabel}</span></p>
         <div className="score-inputs">{scores.map((item, index) => (
           <label key={item.player_id}><span><span className="avatar small">{item.name.charAt(0).toUpperCase()}</span>{item.name}{index === scores.length - 1 && <small> · người cân điểm</small>}</span><span className="score-field"><button type="button" className="sign-button" aria-label={`Đổi dấu điểm của ${item.name}`} onClick={() => toggleSign(item.player_id)}>+/-</button><input type="text" inputMode="numeric" pattern="-?[0-9]*" required value={item.score} onFocus={(e) => e.target.select()} onChange={(e) => update(item.player_id, e.target.value)} /></span></label>
         ))}</div>
-        <div className={`score-total ${total === 0 ? 'valid' : 'invalid'}`}><span>Tổng điểm</span><strong>{total > 0 ? `+${total}` : total}</strong><span>{total === 0 ? <><Check /> Hợp lệ</> : 'Cần bằng 0'}</span></div>
+        <div className={`score-total ${totalIsValid ? 'valid' : 'invalid'}`}><span>Tổng điểm</span><strong>{total > 0 ? `+${total}` : total}</strong><span>{totalIsValid ? <><Check /> Hợp lệ</> : rule.totalRule}</span></div>
         <button type="button" className="ghost full" onClick={balanceLast}><RefreshCw /> Tự cân điểm người cuối</button>
-        <button className="primary full" disabled={busy || total !== 0}>{busy ? <RefreshCw className="spin" /> : <Save />} {game ? 'Lưu thay đổi' : 'Lưu game'}</button>
+        <button className="primary full" disabled={busy || !totalIsValid}>{busy ? <RefreshCw className="spin" /> : <Save />} {game ? 'Lưu thay đổi' : `Lưu ${rule.roundName}`}</button>
       </form>
     </Modal>
   )

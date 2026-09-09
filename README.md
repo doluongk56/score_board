@@ -1,14 +1,14 @@
 # Game Scoreboard
 
-Web ghi điểm cho một nhóm chơi game. Mỗi tour có nhiều game; tổng điểm của tất cả người chơi trong từng game bắt buộc bằng `0`.
+Web ghi điểm cho một nhóm chơi game. Màn hình chính là danh sách game, hiện tại có `Tá lả`; bấm vào game sẽ mở danh sách tour và bảng điểm như cũ.
 
 ## Chức năng
 
-- Trang công khai xem danh sách tour, bảng xếp hạng và điểm từng game.
+- Trang công khai xem danh sách game, danh sách tour, bảng xếp hạng và điểm từng ván.
 - Quản trị bằng email/mật khẩu.
 - Thêm, ẩn, khôi phục hoặc xoá người chơi chưa có lịch sử.
-- Tạo tour và chọn người tham gia.
-- Thêm, sửa, xoá game.
+- Chọn game ở màn hình chính, rồi tạo tour và chọn người tham gia trong game đó.
+- Thêm, sửa, xoá từng ván.
 - Tự cân điểm người cuối để tổng bằng `0`.
 - Kiểm tra tổng điểm ở cả giao diện và database.
 - Giao diện responsive cho điện thoại và máy tính.
@@ -105,7 +105,7 @@ Kiểm tra lần lượt:
 1. Mở mục **Quản trị** và đăng nhập.
 2. Thêm ít nhất 2 người chơi.
 3. Tạo tour và chọn người chơi.
-4. Thêm game, ví dụ `An = 10`, `Bình = -10`.
+4. Thêm ván Tá lả, ví dụ `An = 10`, `Bình = -10`.
 5. Thử lưu game có tổng khác `0`; nút lưu phải bị khoá.
 6. Sửa điểm game rồi kiểm tra bảng xếp hạng cập nhật.
 7. Đăng xuất và xác nhận dữ liệu vẫn xem được nhưng không còn nút sửa.
@@ -158,11 +158,12 @@ Mọi lần sau chỉ cần commit và push lên nhánh `main`; Vercel sẽ tự
 ## 6. Quy tắc dữ liệu
 
 - Mỗi tour cần ít nhất 2 người.
-- Một game lưu điểm cho toàn bộ người thuộc tour.
+- Mỗi tour có một `game_key`; dữ liệu cũ và tour mới mặc định là `ta_la`.
+- Một ván lưu điểm cho toàn bộ người thuộc tour.
 - Điểm phải là số nguyên.
-- Tổng điểm mỗi game phải bằng `0`.
-- Sửa game sẽ thay toàn bộ bộ điểm trong một transaction.
-- Xoá game sẽ đánh lại số thứ tự `Game 1`, `Game 2`, ...
+- Rule `Tá lả` hiện tại yêu cầu tổng điểm mỗi ván bằng `0`.
+- Sửa ván sẽ thay toàn bộ bộ điểm trong một transaction.
+- Xoá ván sẽ đánh lại số thứ tự `Ván 1`, `Ván 2`, ...
 - Nếu người chơi đã tham gia tour, thao tác xoá sẽ chuyển người đó sang trạng thái ẩn để giữ lịch sử.
 - Xoá tour sẽ xoá toàn bộ game và điểm thuộc tour đó.
 
