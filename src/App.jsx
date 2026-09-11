@@ -525,12 +525,15 @@ function GameEditor({ tourId, gameKey, players, game, onClose, onSaved, notify }
   const initial = players.map((player) => ({
     player_id: player.id,
     name: player.name,
-    score: String(game?.game_scores?.find((item) => item.player_id === player.id)?.score ?? 0),
+    score: game ? String(game.game_scores?.find((item) => item.player_id === player.id)?.score ?? 0) : '',
   }))
   const [scores, setScores] = useState(initial)
   const [busy, setBusy] = useState(false)
   const total = scoreTotal(scores)
-  const totalIsValid = !rule.zeroSum || total === 0
+  const emptyScores = scores.filter((item) => item.score === '' || item.score === '-')
+  const allScoresFilled = emptyScores.length === 0
+  const totalIsValid = allScoresFilled && (!rule.zeroSum || total === 0)
+  const canBalance = rule.zeroSum && emptyScores.length === 1
 
   const update = (id, raw) => {
     if (!/^-?\d*$/.test(raw)) return
@@ -545,8 +548,15 @@ function GameEditor({ tourId, gameKey, players, game, onClose, onSaved, notify }
   }
   const balanceLast = () => {
     if (scores.length < 2) return
-    const rest = scores.slice(0, -1).reduce((sum, item) => sum + Number(item.score || 0), 0)
-    setScores((current) => current.map((item, index) => index === current.length - 1 ? { ...item, score: String(-rest) } : item))
+    if (!canBalance) {
+      notify(emptyScores.length === 0 ? 'Hãy xoá điểm ở 1 người để cân bằng vào ô đó.' : 'Cần nhập điểm cho tất cả trừ 1 người.', 'error')
+      return
+    }
+    const targetId = emptyScores[0].player_id
+    const rest = scores
+      .filter((item) => item.player_id !== targetId)
+      .reduce((sum, item) => sum + Number(item.score || 0), 0)
+    setScores((current) => current.map((item) => item.player_id === targetId ? { ...item, score: String(-rest) } : item))
   }
   const submit = async (event) => {
     event.preventDefault()
@@ -566,11 +576,11 @@ function GameEditor({ tourId, gameKey, players, game, onClose, onSaved, notify }
     <Modal title={game ? `Sửa điểm ${rule.roundName} ${game.game_number}` : `Nhập điểm ${rule.roundName} mới`} onClose={onClose} wide>
       <form className="stack-form" onSubmit={submit}>
         <p className="form-note"><strong>{rule.name}</strong><span>{rule.scoreLabel}</span></p>
-        <div className="score-inputs">{scores.map((item, index) => (
-          <label key={item.player_id}><span><span className="avatar small">{item.name.charAt(0).toUpperCase()}</span>{item.name}{index === scores.length - 1 && <small> · người cân điểm</small>}</span><span className="score-field"><button type="button" className="sign-button" aria-label={`Đổi dấu điểm của ${item.name}`} onClick={() => toggleSign(item.player_id)}>+/-</button><input type="text" inputMode="numeric" pattern="-?[0-9]*" required value={item.score} onFocus={(e) => e.target.select()} onChange={(e) => update(item.player_id, e.target.value)} /></span></label>
+        <div className="score-inputs">{scores.map((item) => (
+          <label key={item.player_id}><span><span className="avatar small">{item.name.charAt(0).toUpperCase()}</span>{item.name}{canBalance && emptyScores[0].player_id === item.player_id && <small> · ô cân bằng</small>}</span><span className="score-field"><button type="button" className="sign-button" aria-label={`Đổi dấu điểm của ${item.name}`} onClick={() => toggleSign(item.player_id)}>+/-</button><input type="text" inputMode="numeric" pattern="-?[0-9]*" required value={item.score} onFocus={(e) => e.target.select()} onChange={(e) => update(item.player_id, e.target.value)} /></span></label>
         ))}</div>
         <div className={`score-total ${totalIsValid ? 'valid' : 'invalid'}`}><span>Tổng điểm</span><strong>{total > 0 ? `+${total}` : total}</strong><span>{totalIsValid ? <><Check /> Hợp lệ</> : rule.totalRule}</span></div>
-        <button type="button" className="ghost full" onClick={balanceLast}><RefreshCw /> Tự cân điểm người cuối</button>
+        <button type="button" className="ghost full" onClick={balanceLast} disabled={!rule.zeroSum}><RefreshCw /> Tự cân vào ô còn trống</button>
         <button className="primary full" disabled={busy || !totalIsValid}>{busy ? <RefreshCw className="spin" /> : <Save />} {game ? 'Lưu thay đổi' : `Lưu ${rule.roundName}`}</button>
       </form>
     </Modal>
