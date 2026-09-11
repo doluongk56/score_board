@@ -75,7 +75,7 @@ function useRealtimeReload(channelName, tables, load) {
 
 function App() {
   const [session, setSession] = useState(null)
-  const [page, setPage] = useState({ name: 'games' })
+  const [page, setPage] = useState(() => window.history.state?.page || { name: 'games' })
   const [loginOpen, setLoginOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [notice, setNotice] = useState(null)
@@ -89,6 +89,20 @@ function App() {
     return () => listener.subscription.unsubscribe()
   }, [])
 
+  useEffect(() => {
+    if (!window.history.state?.page) {
+      window.history.replaceState({ page }, '', window.location.href)
+    }
+    const handlePopState = (event) => {
+      setPage(event.state?.page || { name: 'games' })
+      setMenuOpen(false)
+      setLoginOpen(false)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   const notify = useCallback((message, type = 'success') => {
     setNotice({ message, type })
     window.setTimeout(() => setNotice(null), 3500)
@@ -97,6 +111,7 @@ function App() {
   if (!isConfigured) return <SetupRequired />
 
   const navigate = (next) => {
+    window.history.pushState({ page: next }, '', window.location.href)
     setPage(next)
     setMenuOpen(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
