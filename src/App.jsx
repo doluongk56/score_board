@@ -48,6 +48,31 @@ const missingGameKeyColumn = (error) => (
   )
 )
 
+const GAME_LIST_REALTIME_TABLES = ['tours']
+const TOUR_LIST_REALTIME_TABLES = ['tours', 'tour_players', 'games']
+const PLAYER_REALTIME_TABLES = ['players']
+const TOUR_DETAIL_REALTIME_TABLES = ['tours', 'tour_players', 'players', 'games', 'game_scores']
+
+function useRealtimeReload(channelName, tables, load) {
+  useEffect(() => {
+    if (!supabase) return undefined
+    let timer = null
+    const reload = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(load, 250)
+    }
+    const channel = supabase.channel(channelName)
+    for (const table of tables) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, reload)
+    }
+    channel.subscribe()
+    return () => {
+      window.clearTimeout(timer)
+      supabase.removeChannel(channel)
+    }
+  }, [channelName, load, tables])
+}
+
 function App() {
   const [session, setSession] = useState(null)
   const [page, setPage] = useState({ name: 'games' })
@@ -144,6 +169,7 @@ function GamesPage({ navigate, notify }) {
   }, [notify])
 
   useEffect(() => { load() }, [load])
+  useRealtimeReload('game-list-reload', GAME_LIST_REALTIME_TABLES, load)
 
   return (
     <section className="page-container">
@@ -245,6 +271,7 @@ function ToursPage({ gameKey = DEFAULT_GAME_KEY, admin, navigate, notify }) {
   }, [gameKey, notify])
 
   useEffect(() => { load() }, [load])
+  useRealtimeReload(`tour-list-${gameKey}`, TOUR_LIST_REALTIME_TABLES, load)
 
   return (
     <section className="page-container">
@@ -279,7 +306,7 @@ function CreateTourModal({ gameKey, players, onClose, onCreated, notify }) {
   const rule = getGameRule(gameKey)
   const [name, setName] = useState(`Tour ${formatDate(today())}`)
   const [date, setDate] = useState(today())
-  const [selected, setSelected] = useState(() => players.map((p) => p.id))
+  const [selected, setSelected] = useState([])
   const [busy, setBusy] = useState(false)
 
   const toggle = (id) => setSelected((current) => current.includes(id) ? current.filter((x) => x !== id) : [...current, id])
@@ -343,6 +370,7 @@ function PlayersPage({ admin, notify, onLogin }) {
     setLoading(false)
   }, [notify])
   useEffect(() => { load() }, [load])
+  useRealtimeReload('player-list-reload', PLAYER_REALTIME_TABLES, load)
 
   const add = async (event) => {
     event.preventDefault()
@@ -415,6 +443,7 @@ function TourPage({ tourId, admin, navigate, notify }) {
     setLoading(false)
   }, [tourId, notify])
   useEffect(() => { load() }, [load])
+  useRealtimeReload(`tour-detail-${tourId}`, TOUR_DETAIL_REALTIME_TABLES, load)
 
   const rule = getGameRule(tour?.game_key)
   const standings = useMemo(() => calculateStandings(players, games, tour?.game_key), [players, games, tour?.game_key])

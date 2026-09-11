@@ -60,6 +60,28 @@ create table if not exists public.game_scores (
 create index if not exists games_tour_id_idx on public.games(tour_id);
 create index if not exists game_scores_player_id_idx on public.game_scores(player_id);
 
+-- Bật Realtime để các máy đang mở scoreboard tự cập nhật khi có thay đổi.
+do $$
+declare
+  v_table text;
+begin
+  foreach v_table in array array['players', 'tours', 'tour_players', 'games', 'game_scores']
+  loop
+    if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+      and not exists (
+        select 1
+        from pg_publication_tables
+        where pubname = 'supabase_realtime'
+          and schemaname = 'public'
+          and tablename = v_table
+      )
+    then
+      execute format('alter publication supabase_realtime add table public.%I', v_table);
+    end if;
+  end loop;
+end;
+$$;
+
 alter table public.players enable row level security;
 alter table public.tours enable row level security;
 alter table public.tour_players enable row level security;
